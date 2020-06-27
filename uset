@@ -5,7 +5,7 @@
 # Autor: https://github.com/sitemapxml      #
 # Licenca: MIT                              #
 # Datum prvog objavljivanja: Dec 25, 2019.  #
-# Verzija: 1.0.0 - Prvo stabilno izdanje!   #
+# Verzija: _                                #
 #############################################
 
 # Definicije boja
@@ -125,6 +125,13 @@ while true; do
 	echo
 done
 
+# Odabir http servera
+echo -e ${YELLOW}'Da li želite da instalirate Apache ili Nginx?'${NC}
+echo 'Unesite:'
+echo -e "${WHITE}1${NC} za Apache"
+echo -e "${WHITE}2${NC} za Nginx"
+read -p ": " wserv
+
 # Početak instalacije
 echo
 echo -e ${YELLOW}'Neophodne informacije su prikupljene. Instalacija može da počne.'${NC}
@@ -147,23 +154,44 @@ apt-get update
 apt-get install software-properties-common apt-transport-https -y
 
 # Instalacija php i mysql, php ekstenzije, sitni pomoćni programi zip, unzip i tree
-echo -e ${YELLOW}'Instalira se apache2, php i mysql'${NC}
-sleep 1s
-apt-get install apache2 php mysql-server -y
+if [ $wserv = "1" ]; then
+  echo -e ${YELLOW}'Instalira se apache2, php i mysql'${NC}
+  sleep 1s
+  apt-get install apache2 php -y
+  systemctl enable apache2
+else
+  echo -e ${YELLOW}'Instalira se Nginx, php i mysql'${NC}
+  sleep 1s
+  apt-get install nginx php-fpm -y
+  systemctl enable nginx php7.4-fpm
+fi
+
 echo -e ${YELLOW}'Instaliranje php ekstenzija...'${NC}
-sleep 1s
 apt-get install php-zip php-mysql php-curl php-mbstring php-bcmath php-gd php-xml php-json php-soap php-intl -y
-systemctl enable mysql apache2
+
+# MySQL instalacija
+apt-get install mysql
+systemctl enable mysql
+
+# Sitni pomoćni programi
 apt-get install zip unzip tree locate net-tools -y
 
 # Osnovna podešavanja php-a, ServerTokens
 echo -e ${YELLOW}'Konfigurisanje php-a...'${NC}
 sleep 1s
-sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' /etc/php/7.2/apache2/php.ini
-sed -i 's/post_max_size = 8M/post_max_size = 280M/g' /etc/php/7.2/apache2/php.ini
-sed -i 's/upload_max_filesize = 2M/upload_max_filesize = 256M/g' /etc/php/7.2/apache2/php.ini
-sed -i 's/ServerTokens OS/ServerTokens Prod/g' /etc/apache2/conf-available/security.conf
-systemctl restart apache2
+if [ $wserv = "1" ]; then
+  sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' /etc/php/7.2/apache2/php.ini
+  sed -i 's/post_max_size = 8M/post_max_size = 280M/g' /etc/php/7.2/apache2/php.ini
+  sed -i 's/upload_max_filesize = 2M/upload_max_filesize = 256M/g' /etc/php/7.2/apache2/php.ini
+  sed -i 's/ServerTokens OS/ServerTokens Prod/g' /etc/apache2/conf-available/security.conf
+  systemctl restart apache2
+else
+  sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' /etc/php/7.4/fpm/php.ini
+  sed -i 's/post_max_size = 8M/post_max_size = 280M/g' /etc/php/7.4/fpm/php.ini
+  sed -i 's/upload_max_filesize = 2M/upload_max_filesize = 256M/g' /etc/php/7.4/fpm/php.ini
+  sed -i 's/# server_tokens off;/server_tokens off;/g' /etc/nginx/nginx.conf
+  systemctl restart nginx php7.4-fpm
+fi
 
 # Webmin instalacija
 echo -e ${YELLOW}'Instaliranje Webmin kontrolne table...'${NC}
@@ -176,18 +204,31 @@ sed -i 's/port=10000/port=3000/g' /etc/webmin/miniserv.conf
 /etc/init.d/webmin restart
 
 # Podešavanje veb servera
-echo -e ${YELLOW}'Konfigurisanje Apache servera...'${NC}
 sleep 1s
 rm -rf /var/www/html
 mkdir /var/www/$hostname
-cp files/vhost.conf /etc/apache2/sites-available/$hostname.conf
-sed -i "s/sn_default/$hostname/g" /etc/apache2/sites-available/$hostname.conf
-sed -i "s/dir_default/$hostname/g" /etc/apache2/sites-available/$hostname.conf
-a2dissite 000-default
-rm /etc/apache2/sites-available/000-default.conf
-a2ensite $hostname
-a2enmod rewrite
-systemctl restart apache2
+
+# Apache
+if [ $wserv = "1" ]; then
+  echo -e ${YELLOW}'Konfigurisanje Apache servera...'${NC}
+  cp files/apache.conf /etc/apache2/sites-available/$hostname.conf
+  sed -i "s/sn_default/$hostname/g" /etc/apache2/sites-available/$hostname.conf
+  sed -i "s/dir_default/$hostname/g" /etc/apache2/sites-available/$hostname.conf
+  a2dissite 000-default
+  rm /etc/apache2/sites-available/000-default.conf
+  a2ensite $hostname
+  a2enmod rewrite
+  systemctl restart apache2
+else
+  echo -e ${YELLOW}'Konfigurisanje Nginx servera...'${NC}
+  cp files/nginx.conf /etc/nginx/sites-available/$hostname.conf
+  sed -i "s/sn_default/$hostname/g" /etc/nginx/sites-available/$hostname.conf
+  sed -i "s/dir_default/$hostname/g" /etc/nginx/sites-available/$hostname.conf
+  ln /etc/nginx/sites-available/$hostname.conf /etc/nginx/sites-enabled/$hostname.conf
+  rm /etc/nginx/sites-available/default
+  rm /etc/nginx/sites-enabled/default
+  systemctl restart nginx
+fi
 
 # Dodavanje UNIX korisnika
 echo -e ${YELLOW}'Dodavanje UNIX korisnika...'${NC}
@@ -219,11 +260,16 @@ while true
 		[dD][aA]|[dD])
 			echo 'Instalira se SSL...'
 			sleep 1s
-			# Certbot instalacija
-			apt-get install python3-certbot-apache -y
 
-			# Instalacija Let's encrypt SSL sertifikata
-			certbot --apache --non-interactive --agree-tos --domains $hostname --email $email
+      # Certbot instalacija
+      # Instalacija Let's encrypt SSL sertifikata
+      if [ $wserv = "1" ]; then
+        apt-get install python3-certbot-apache -y
+        certbot --apache --non-interactive --agree-tos --domains $hostname --email $email
+      else
+        apt-get install python3-certbot-nginx -y
+        certbot --nginx --non-interactive --agree-tos --domains $hostname --email $email
+      fi
 
       CERTFILE="/etc/letsencrypt/live/$hostname/fullchain.pem"
       KEYFILE="/etc/letsencrypt/live/$hostname/privkey.pem"
@@ -295,8 +341,13 @@ while true
 			echo -e '\n/* FS Method */\ndefine('FS_METHOD','direct');' >> /var/www/$hostname/html/wp-config-sample.php
 
 			# Instaliranje dodatnih php ekstenzija
-			apt-get install php-xmlrpc php-exif -y
-			systemctl restart apache2
+      apt-get install php-xmlrpc php-exif -y
+      
+      if [ $wserv = "1" ]; then
+  			systemctl restart apache2
+      else
+  			systemctl restart nginx php7.4-fpm
+      fi
 
 			# Brisanje nepotrebnih fajlova
 			rm latest-sr_RS.tar.gz
@@ -381,9 +432,16 @@ while true
 		case $ufw_firewall in
 		[dD][aA]|[dD])
 			ufw --force enable
-			ufw allow 'OpenSSH'
-			ufw allow 'Apache Full'
-			ufw allow '3000/tcp'
+
+      ufw allow 'OpenSSH'
+      ufw allow '3000/tcp'
+
+      if [ $wserv = "1" ]; then
+        ufw allow 'Apache Full'
+      else
+        ufe allow 'Nginx Full'
+      fi
+
 			ufw reload
 			echo -e ${GREEN}'Zaštita portova je omogućena!'${NC}
 		break
