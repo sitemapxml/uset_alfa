@@ -342,7 +342,7 @@ while true
 
 			# Instaliranje dodatnih php ekstenzija
       apt-get install php-xmlrpc php-exif -y
-      
+
       if [ $wserv = "1" ]; then
   			systemctl restart apache2
       else
@@ -439,7 +439,7 @@ while true
       if [ $wserv = "1" ]; then
         ufw allow 'Apache Full'
       else
-        ufe allow 'Nginx Full'
+        ufw allow 'Nginx Full'
       fi
 
 			ufw reload
