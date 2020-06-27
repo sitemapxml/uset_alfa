@@ -155,12 +155,12 @@ apt-get install software-properties-common apt-transport-https -y
 
 # Instalacija php i mysql, php ekstenzije, sitni pomoćni programi zip, unzip i tree
 if [ $wserv = "1" ]; then
-  echo -e ${YELLOW}'Instalira se apache2, php i mysql'${NC}
+  echo -e ${YELLOW}'Instalira se apache2, php'${NC}
   sleep 1s
   apt-get install apache2 php -y
   systemctl enable apache2
 else
-  echo -e ${YELLOW}'Instalira se Nginx, php i mysql'${NC}
+  echo -e ${YELLOW}'Instalira se Nginx, php'${NC}
   sleep 1s
   apt-get install nginx php-fpm -y
   systemctl enable nginx php7.4-fpm
@@ -170,7 +170,7 @@ echo -e ${YELLOW}'Instaliranje php ekstenzija...'${NC}
 apt-get install php-zip php-mysql php-curl php-mbstring php-bcmath php-gd php-xml php-json php-soap php-intl -y
 
 # MySQL instalacija
-apt-get install mysql
+apt-get install mysql-server
 systemctl enable mysql
 
 # Sitni pomoćni programi
